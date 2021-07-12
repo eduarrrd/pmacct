@@ -20,7 +20,13 @@
 */
 
 /* includes */
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+#define bpf_program cbpf_program
+#define bpf_insn cbpf_insn
 #include "pmacct.h"
+#undef bpf_program
+#undef bpf_insn
 #include "addr.h"
 #include "bgp/bgp.h"
 #include "bmp.h"
@@ -42,6 +48,12 @@
 thread_pool_t *bmp_pool;
 
 /* Functions */
+static int libbpf_print_fn(enum libbpf_print_level level,
+                           const char* format,
+                           va_list args) {
+  return level <= LIBBPF_DEBUG ? vfprintf(stderr, format, args) : 0;
+}
+
 void bmp_daemon_wrapper()
 {
   /* initialize variables */
@@ -285,9 +297,59 @@ int skinny_bmp_daemon()
       exit_gracefully(1);
     }
 
+    int tmap_fd, prog_fd;
+    long err = 0;
+
+    libbpf_set_print(libbpf_print_fn);
+
+    struct bpf_object_open_opts opts = {
+        .sz = sizeof(struct bpf_object_open_opts),
+        .pin_root_path = "/sys/fs/bpf/pmacct"};
+
+    struct bpf_object* obj = bpf_object__open_file("reuseportprog.o", &opts);
+    err = libbpf_get_error(obj);
+    if (err) {
+      perror("Failed to open BPF elf file");
+      exit_gracefully(1);
+    }
+
+    struct bpf_map* tcpmap =
+        bpf_object__find_map_by_name(obj, "tcp_balancing_targets");
+    assert(tcpmap);
+
+    if (bpf_object__load(obj) != 0) {
+      perror("Error loading BPF object into kernel");
+      exit_gracefully(1);
+    }
+
+    tmap_fd = bpf_map__fd(tcpmap);
+    assert(tmap_fd);
+
+    struct bpf_program* prog =
+        bpf_object__find_program_by_name(obj, "_selector");
+    if (!prog) {
+      perror("Could not find BPF program in BPF object");
+      exit_gracefully(1);
+    }
+
+    prog_fd = bpf_program__fd(prog);
+    assert(prog_fd);
+
+    if (setsockopt(config.bmp_sock, SOL_SOCKET, SO_ATTACH_REUSEPORT_EBPF,
+                   &prog_fd, sizeof(prog_fd)) != 0) {
+      perror("Could not attach BPF prog");
+      exit_gracefully(1);
+    }
+
     rc = listen(config.bmp_sock, 1);
     if (rc < 0) {
       Log(LOG_ERR, "ERROR ( %s/%s ): listen() failed (errno: %d).\n", config.name, bmp_misc_db->log_str, errno);
+      exit_gracefully(1);
+    }
+
+    uint32_t key = 0;
+    if (bpf_map_update_elem(tmap_fd, &key, &(config.bmp_sock), BPF_ANY) != 0) {
+      perror("Could not update reuseport array");
       exit_gracefully(1);
     }
 

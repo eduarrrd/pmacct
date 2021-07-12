@@ -346,6 +346,13 @@ fi
 
 dnl Checks for libraries.
 
+dnl Checking for libbpf
+PKG_CHECK_MODULES([LIBBPF], [libbpf >= 0.4], [
+  PMACCT_CFLAGS="$PMACCT_CFLAGS $LIBBPF_CFLAGS"
+], [
+  AC_MSG_ERROR([Missing libbpf library.])
+])
+
 dnl libpcap is checked only if PF_RING is not found
 if test x"$PFRING_LIB_FOUND" = x""; then
   AC_CHECK_LIB([pcap], [pcap_dispatch], [], [AC_MSG_ERROR([
