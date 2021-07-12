@@ -8487,3 +8487,20 @@ int cfg_key_nfacctd_bmp_daemon_parse_proxy_header(char *filename, char *name, ch
 
   return changes;
 }
+
+int cfg_key_reuseport_hashbucket_index(char *filename, char *name, char *value_ptr)
+{
+  struct plugins_list_entry *list = plugins_list;
+  int value, changes = 0;
+
+  value = atoi(value_ptr);
+  if (value < 0) {
+    Log(LOG_ERR, "FATAL: [%s] 'reuseport_hashbucket_index' cannot be negative.\n", filename);
+    return ERR;
+  }
+
+  for (; list; list = list->next, changes++) list->cfg.reuseport_hashbucket_index = value;
+  if (name) Log(LOG_WARNING, "WARN: [%s] plugin name not supported for key 'reuseport_hashbucket_index'. Globalized.\n", filename);
+
+  return changes;
+}
