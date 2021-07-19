@@ -348,7 +348,9 @@ int skinny_bmp_daemon()
     }
 
     uint32_t key = config.reuseport_hashbucket_index;
-    if (bpf_map_update_elem(tmap_fd, &key, &(config.bmp_sock), BPF_ANY) != 0) {
+    // sizeof(BPF_MAP_TYPE_REUSEPORT_SOCKARRAY's values) == 8
+    uint64_t val = config.bmp_sock;
+    if (bpf_map_update_elem(tmap_fd, &key, &val, BPF_ANY) != 0) {
       perror("Could not update reuseport array");
       exit_gracefully(1);
     }
