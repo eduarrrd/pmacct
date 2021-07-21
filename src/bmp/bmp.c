@@ -363,15 +363,14 @@ int skinny_bmp_daemon()
     prog_fd = bpf_program__fd(prog);
     assert(prog_fd);
 
-    if (setsockopt(config.bmp_sock, SOL_SOCKET, SO_ATTACH_REUSEPORT_EBPF,
-                   &prog_fd, sizeof(prog_fd)) != 0) {
-      perror("Could not attach BPF prog");
-      exit_gracefully(1);
-    }
-
     rc = listen(config.bmp_sock, 1);
     if (rc < 0) {
       Log(LOG_ERR, "ERROR ( %s/%s ): listen() failed (errno: %d).\n", config.name, bmp_misc_db->log_str, errno);
+      exit_gracefully(1);
+    }
+
+    if (setsockopt(config.bmp_sock, SOL_SOCKET, SO_ATTACH_REUSEPORT_EBPF, &prog_fd, sizeof(prog_fd)) != 0) {
+      perror("Could not attach BPF prog");
       exit_gracefully(1);
     }
 
