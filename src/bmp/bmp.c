@@ -297,7 +297,7 @@ int skinny_bmp_daemon()
       exit_gracefully(1);
     }
 
-    int tmap_fd, prog_fd;
+    int size_map_fd, tmap_fd, prog_fd;
     long err = 0;
 
     libbpf_set_print(libbpf_print_fn);
@@ -313,12 +313,40 @@ int skinny_bmp_daemon()
       exit_gracefully(1);
     }
 
+    // Determine intended number of hash buckets
+    // Assumption: static during lifetime of this process
+    struct bpf_map* size_map = bpf_object__find_map_by_name(obj, "size");
+    assert(size_map);
+
     struct bpf_map* tcpmap =
         bpf_object__find_map_by_name(obj, "tcp_balancing_targets");
     assert(tcpmap);
 
     if (bpf_object__load(obj) != 0) {
       perror("Error loading BPF object into kernel");
+      exit_gracefully(1);
+    }
+
+    size_map_fd = bpf_map__fd(size_map);
+    assert(size_map_fd);
+
+    uint32_t index = 0;
+    uint32_t balancer_count;
+    bpf_map_lookup_elem(size_map_fd, &index, &balancer_count);
+    if (bpf_map_lookup_elem(size_map_fd, &index, &balancer_count) != 0) {
+      perror("Could not read balancer count");
+      exit_gracefully(1);
+    }
+    if (balancer_count == 0) {  // BPF program hasn't run yet to initalize this
+      balancer_count = config.reuseport_hashbucket_count;
+      if (bpf_map_update_elem(size_map_fd, &index, &balancer_count, BPF_ANY) != 0) {
+        perror("Could not update balancer count");
+        exit_gracefully(1);
+      }
+    } else if (balancer_count == config.reuseport_hashbucket_count) {
+      // Nothing to do
+    } else {
+      Log(LOG_ERR, "ERROR ( %s/%s ): Mismatched hashbucket count: configured %d, found %d.\n", config.name, bmp_misc_db->log_str, config.reuseport_hashbucket_count, balancer_count);
       exit_gracefully(1);
     }
 

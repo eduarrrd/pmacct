@@ -628,6 +628,7 @@ static const struct _dictionary_line dictionary[] = {
   {"tmp_bgp_lookup_compare_ports", cfg_key_tmp_bgp_lookup_compare_ports},
   {"tmp_bgp_daemon_route_refresh", cfg_key_tmp_bgp_daemon_route_refresh},
   {"reuseport_hashbucket_index", cfg_key_reuseport_hashbucket_index},
+  {"reuseport_hashbucket_count", cfg_key_reuseport_hashbucket_count},
   {"", NULL}
 };
 

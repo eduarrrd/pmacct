@@ -8504,3 +8504,20 @@ int cfg_key_reuseport_hashbucket_index(char *filename, char *name, char *value_p
 
   return changes;
 }
+
+int cfg_key_reuseport_hashbucket_count(char *filename, char *name, char *value_ptr)
+{
+  struct plugins_list_entry *list = plugins_list;
+  int value, changes = 0;
+
+  value = atoi(value_ptr);
+  if (value < 1) {
+    Log(LOG_ERR, "FATAL: [%s] 'reuseport_hashbucket_count' must be positive.\n", filename);
+    return ERR;
+  }
+
+  for (; list; list = list->next, changes++) list->cfg.reuseport_hashbucket_count = value;
+  if (name) Log(LOG_WARNING, "WARN: [%s] plugin name not supported for key 'reuseport_hashbucket_count'. Globalized.\n", filename);
+
+  return changes;
+}
