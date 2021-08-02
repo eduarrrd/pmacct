@@ -609,6 +609,7 @@ struct configuration {
   int bmp_daemon_parse_proxy_header;
   int reuseport_hashbucket_index;
   int reuseport_hashbucket_count;
+  char *reuseport_bpf_prog;
 };
 
 /* prototypes */ 

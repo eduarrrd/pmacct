@@ -506,6 +506,7 @@ extern int cfg_key_tmp_bgp_lookup_compare_ports(char *, char *, char *);
 extern int cfg_key_tmp_bgp_daemon_route_refresh(char *, char *, char *);
 extern int cfg_key_reuseport_hashbucket_index(char *, char *, char *);
 extern int cfg_key_reuseport_hashbucket_count(char *, char *, char *);
+extern int cfg_key_reuseport_bpf_prog(char *, char *, char *);
 
 extern void parse_time(char *, char *, int *, int *);
 extern void cfg_set_aggregate(char *, u_int64_t [], u_int64_t, char *);

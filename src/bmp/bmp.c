@@ -306,7 +306,7 @@ int skinny_bmp_daemon()
         .sz = sizeof(struct bpf_object_open_opts),
         .pin_root_path = "/sys/fs/bpf/pmacct"};
 
-    struct bpf_object* obj = bpf_object__open_file("reuseportprog.o", &opts);
+    struct bpf_object* obj = bpf_object__open_file(config.reuseport_bpf_prog, &opts);
     err = libbpf_get_error(obj);
     if (err) {
       perror("Failed to open BPF elf file");
