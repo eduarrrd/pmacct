@@ -20,8 +20,14 @@
 */
 
 /* includes */
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+#define bpf_program cbpf_program
+#define bpf_insn cbpf_insn
 #include "pmacct.h"
 #include "addr.h"
+#undef bpf_program
+#undef bpf_insn
 #ifdef WITH_KAFKA
 #include "kafka_common.h"
 #endif
@@ -99,6 +105,9 @@ void usage_daemon(char *prog_name)
   printf("For suggestions, critics, bugs, contact me: %s.\n", MANTAINER);
 }
 
+static int libbpf_print_fn(enum libbpf_print_level level, const char* format, va_list args) {
+  return level <= LIBBPF_DEBUG ? vfprintf(stderr, format, args) : 0;
+}
 
 int main(int argc,char **argv, char **envp)
 {
@@ -1077,9 +1086,83 @@ int main(int argc,char **argv, char **envp)
 #endif
 
   if (!config.pcap_savefile && !config.nfacctd_kafka_broker_host && !config.nfacctd_zmq_address) {
+    libbpf_set_print(libbpf_print_fn);
+
+    struct bpf_object_open_opts opts = {.sz = sizeof(struct bpf_object_open_opts),
+                                        .pin_root_path = "/sys/fs/bpf/pmacct"};
+
+    struct bpf_object* obj = bpf_object__open_file(config.reuseport_bpf_prog, &opts);
+    long err = libbpf_get_error(obj);
+    if (err) {
+      perror("Failed to open BPF elf file");
+      exit_gracefully(1);
+    }
+
+    // Determine intended number of hash buckets
+    // Assumption: static during lifetime of this process
+    struct bpf_map* size_map = bpf_object__find_map_by_name(obj, "size");
+    assert(size_map);
+
+    struct bpf_map* udpmap = bpf_object__find_map_by_name(obj, "udp_balancing_targets");
+    assert(udpmap);
+
+    if (bpf_object__load(obj) != 0) {
+      perror("Error loading BPF object into kernel");
+      exit_gracefully(1);
+    }
+
+    int size_map_fd = bpf_map__fd(size_map);
+    assert(size_map_fd);
+
+    uint32_t index = 0;
+    uint32_t balancer_count;
+    bpf_map_lookup_elem(size_map_fd, &index, &balancer_count);
+    if (bpf_map_lookup_elem(size_map_fd, &index, &balancer_count) != 0) {
+      perror("Could not read balancer count");
+      exit_gracefully(1);
+    }
+    if (balancer_count == 0) {  // BPF program hasn't run yet to initalize this
+      balancer_count = config.reuseport_hashbucket_count;
+      if (bpf_map_update_elem(size_map_fd, &index, &balancer_count, BPF_ANY) != 0) {
+        perror("Could not update balancer count");
+        exit_gracefully(1);
+      }
+    } else if (balancer_count == config.reuseport_hashbucket_count) {
+      // Nothing to do
+    } else {
+      Log(LOG_ERR, "ERROR ( %s/%s ): Mismatched hashbucket count: configured %d, found %d.\n", config.name,
+          bmp_misc_db->log_str, config.reuseport_hashbucket_count, balancer_count);
+      exit_gracefully(1);
+    }
+
+    int umap_fd = bpf_map__fd(udpmap);
+    assert(umap_fd);
+
+    struct bpf_program* prog = bpf_object__find_program_by_name(obj, "_selector");
+    if (!prog) {
+      perror("Could not find BPF program in BPF object");
+      exit_gracefully(1);
+    }
+
+    int prog_fd = bpf_program__fd(prog);
+    assert(prog_fd);
+
+    if (setsockopt(config.sock, SOL_SOCKET, SO_ATTACH_REUSEPORT_EBPF, &prog_fd, sizeof(prog_fd)) != 0) {
+      perror("Could not attach BPF prog");
+      exit_gracefully(1);
+    }
+
     rc = bind(config.sock, (struct sockaddr *) &server, slen);
     if (rc < 0) {
       Log(LOG_ERR, "ERROR ( %s/core ): bind() to ip=%s port=%d/udp failed (errno: %d).\n", config.name, config.nfacctd_ip, config.nfacctd_port, errno);
+      exit_gracefully(1);
+    }
+
+    uint32_t key = config.reuseport_hashbucket_index;
+    // sizeof(BPF_MAP_TYPE_REUSEPORT_SOCKARRAY's values) == 8
+    uint64_t val = config.sock;
+    if (bpf_map_update_elem(umap_fd, &key, &val, BPF_ANY) != 0) {
+      perror("Could not update reuseport array");
       exit_gracefully(1);
     }
 

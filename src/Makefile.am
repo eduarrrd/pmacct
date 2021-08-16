@@ -153,7 +153,7 @@ bin_PROGRAMS += pmacct
 pmacctd_SOURCES = pmacctd.c
 pmacctd_LDADD = libdaemons.la
 nfacctd_SOURCES = nfacctd.c nfv9_template.c
-nfacctd_LDADD = libdaemons.la
+nfacctd_LDADD = libdaemons.la @LIBBPF_LIBS@
 sfacctd_SOURCES = sfacctd.c sflow.c sfv5_module.c
 sfacctd_LDADD = libdaemons.la
 if WITH_NFLOG
