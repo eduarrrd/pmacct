@@ -332,7 +332,6 @@ int skinny_bmp_daemon()
 
     uint32_t index = 0;
     uint32_t balancer_count;
-    bpf_map_lookup_elem(size_map_fd, &index, &balancer_count);
     if (bpf_map_lookup_elem(size_map_fd, &index, &balancer_count) != 0) {
       perror("Could not read balancer count");
       exit_gracefully(1);
